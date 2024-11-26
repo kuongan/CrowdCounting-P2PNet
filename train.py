@@ -42,7 +42,7 @@ def get_args_parser():
                         help="L1 point coefficient in the matching cost")
 
     # * Loss coefficients
-    parser.add_argument('--point_loss_coef', default=0.0002, type=float)
+    parser.add_argument('--point_loss_coef', default=0.02, type=float)
 
     parser.add_argument('--eos_coef', default=0.5, type=float,
                         help="Relative classification weight of the no-object class")
@@ -190,12 +190,12 @@ def main(args):
             mae.append(result[0])
             mse.append(result[1])
             # print the evaluation results
-            print('=======================================test=======================================')
+            print('=======================================val=======================================')
             print("mae:", result[0], "mse:", result[1], "time:", t2 - t1, "best mae:", np.min(mae), )
             with open(run_log_name, "a") as log_file:
                 log_file.write("mae:{}, mse:{}, time:{}, best mae:{}".format(result[0], 
                                 result[1], t2 - t1, np.min(mae)))
-            print('=======================================test=======================================')
+            print('=======================================val=======================================')
             # recored the evaluation results
             if writer is not None:
                 with open(run_log_name, "a") as log_file:

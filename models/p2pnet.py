@@ -275,7 +275,7 @@ class SetCriterion_Crowd(nn.Module):
         loss_bbox = F.mse_loss(src_points, target_points, reduction='none')
 
         losses = {}
-        losses['loss_point'] = loss_bbox.sum() / num_points
+        losses['loss_points'] = loss_bbox.sum() / num_points
 
         return losses
 
@@ -333,6 +333,7 @@ def build(args, training):
         return model
 
     weight_dict = {'loss_ce': 1, 'loss_points': args.point_loss_coef}
+    print('weight_dict', weight_dict)
     losses = ['labels', 'points']
     matcher = build_matcher_crowd(args)
     criterion = SetCriterion_Crowd(num_classes, \
