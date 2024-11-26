@@ -53,7 +53,7 @@ def get_args_parser():
 
     # dataset parameters
     parser.add_argument('--dataset_file', default='SHHA')
-    parser.add_argument('--data_root', default='./new_public_density_data',
+    parser.add_argument('--data_root', default='./DATASET/part_A',
                         help='path where the dataset is')
     
     parser.add_argument('--output_dir', default='./log',
