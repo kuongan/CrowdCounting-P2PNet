@@ -42,7 +42,7 @@ def get_args_parser():
                         help="L1 point coefficient in the matching cost")
 
     # * Loss coefficients
-    parser.add_argument('--point_loss_coef', default=0.02, type=float)
+    parser.add_argument('--point_loss_coef', default=0.0002, type=float)
 
     parser.add_argument('--eos_coef', default=0.5, type=float,
                         help="Relative classification weight of the no-object class")
