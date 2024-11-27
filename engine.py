@@ -122,7 +122,7 @@ def train_one_epoch(model: torch.nn.Module, criterion: torch.nn.Module,
 
 # the inference routine
 @torch.no_grad()
-def evaluate_crowd_no_overlap(model, data_loader, device, vis_dir=None):
+def evaluate_crowd_no_overlap(model, data_loader, device, criterion=None, vis_dir=None):
     model.eval()
 
     metric_logger = utils.MetricLogger(delimiter="  ")
@@ -130,30 +130,43 @@ def evaluate_crowd_no_overlap(model, data_loader, device, vis_dir=None):
     # run inference on all images to calc MAE
     maes = []
     mses = []
+    total_loss = 0  # Thêm biến để tích lũy loss
+
     for samples, targets in data_loader:
         samples = samples.to(device)
+        targets = [{k: v.to(device) for k, v in t.items()} for t in targets]
 
         outputs = model(samples)
         outputs_scores = torch.nn.functional.softmax(outputs['pred_logits'], -1)[:, :, 1][0]
-
         outputs_points = outputs['pred_points'][0]
 
         gt_cnt = targets[0]['point'].shape[0]
-        # 0.5 is used by default
         threshold = 0.5
 
         points = outputs_points[outputs_scores > threshold].detach().cpu().numpy().tolist()
         predict_cnt = int((outputs_scores > threshold).sum())
+
         # if specified, save the visualized images
-        if vis_dir is not None: 
+        if vis_dir is not None:
             vis(samples, targets, [points], vis_dir)
+
         # accumulate MAE, MSE
         mae = abs(predict_cnt - gt_cnt)
         mse = (predict_cnt - gt_cnt) * (predict_cnt - gt_cnt)
         maes.append(float(mae))
         mses.append(float(mse))
+
+        # Nếu truyền `criterion`, tính loss
+        if criterion is not None:
+            loss_dict = criterion(outputs, targets)
+            weight_dict = criterion.weight_dict
+            losses = sum(loss_dict[k] * weight_dict[k] for k in loss_dict.keys() if k in weight_dict)
+            total_loss += losses.item()
+
     # calc MAE, MSE
     mae = np.mean(maes)
     mse = np.sqrt(np.mean(mses))
+    avg_loss = total_loss / len(data_loader) if criterion is not None else None
 
-    return mae, mse
+    # Trả về MAE, MSE và Loss trung bình
+    return mae, mse, avg_loss

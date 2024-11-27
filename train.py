@@ -69,9 +69,11 @@ def get_args_parser():
                         help='start epoch')
     parser.add_argument('--eval', action='store_true')
     parser.add_argument('--num_workers', default=8, type=int)
-    parser.add_argument('--eval_freq', default=5, type=int,
+    parser.add_argument('--eval_freq', default=1, type=int,
                         help='frequency of evaluation, default setting is evaluating in every 5 epoch')
     parser.add_argument('--gpu_id', default=0, type=int, help='the gpu used for training')
+    parser.add_argument('--patience', default=3, type=int,
+                        help='Number of epochs with no improvement to stop training')
 
     return parser
 
@@ -80,14 +82,14 @@ def main(args):
     # create the logging file
     run_log_name = os.path.join(args.output_dir, 'run_log.txt')
     with open(run_log_name, "w") as log_file:
-        log_file.write('Eval Log %s\n' % time.strftime("%c"))
+        log_file.write('Eval Log %s \n' % time.strftime("%c"))
 
     if args.frozen_weights is not None:
         assert args.masks, "Frozen training is meant for segmentation only"
     # backup the arguments
     print(args)
     with open(run_log_name, "a") as log_file:
-        log_file.write("{}".format(args))
+        log_file.write("{} \n".format(args))
     device = torch.device('cuda')
     # fix the seed for reproducibility
     seed = args.seed + utils.get_rank()
@@ -153,6 +155,8 @@ def main(args):
     writer = SummaryWriter(args.tensorboard_dir)
     
     step = 0
+    best_loss=99999
+    epochs_no_improve=0
     # training starts here
     for epoch in range(args.start_epoch, args.epochs):
         t1 = time.time()
@@ -163,8 +167,8 @@ def main(args):
         # record the training states after every epoch
         if writer is not None:
             with open(run_log_name, "a") as log_file:
-                log_file.write("loss/loss@{}: {}".format(epoch, stat['loss']))
-                log_file.write("loss/loss_ce@{}: {}".format(epoch, stat['loss_ce']))
+                log_file.write("loss/loss@{}: {} ".format(epoch, stat['loss']))
+                log_file.write("loss/loss_ce@{}: {} ".format(epoch, stat['loss_ce']))
                 
             writer.add_scalar('loss/loss', stat['loss'], epoch)
             writer.add_scalar('loss/loss_ce', stat['loss_ce'], epoch)
@@ -173,7 +177,7 @@ def main(args):
         print('[ep %d][lr %.7f][%.2fs]' % \
               (epoch, optimizer.param_groups[0]['lr'], t2 - t1))
         with open(run_log_name, "a") as log_file:
-            log_file.write('[ep %d][lr %.7f][%.2fs]' % (epoch, optimizer.param_groups[0]['lr'], t2 - t1))
+            log_file.write('[ep %d][lr %.7f][%.2fs] \n ' % (epoch, optimizer.param_groups[0]['lr'], t2 - t1))
         # change lr according to the scheduler
         lr_scheduler.step()
         # save latest weights every epoch
@@ -182,27 +186,39 @@ def main(args):
             'model': model_without_ddp.state_dict(),
         }, checkpoint_latest_path)
         # run evaluation
-        if epoch % args.eval_freq == 0 and epoch != 0:
+        if epoch % args.eval_freq == 0:
             t1 = time.time()
-            result = evaluate_crowd_no_overlap(model, data_loader_val, device)
+            result = evaluate_crowd_no_overlap(model, data_loader_val, device, criterion)
             t2 = time.time()
-
+                    # Check for improvement based on loss
+            if result[2] < best_loss:
+                best_loss = result[2]
+                epochs_no_improve = 0
+                checkpoint_best_path = os.path.join(args.checkpoints_dir, 'best_loss.pth')
+                torch.save({'model': model.state_dict()}, checkpoint_best_path)
+            else:
+                epochs_no_improve += 1
+            # Early stopping based on loss
+            if epochs_no_improve >= args.patience:
+                print(f"Early stopping triggered. No improvement in {args.patience} epochs based on loss.")
+                break
             mae.append(result[0])
             mse.append(result[1])
             # print the evaluation results
             print('=======================================val=======================================')
-            print("mae:", result[0], "mse:", result[1], "time:", t2 - t1, "best mae:", np.min(mae), )
+            print("mae:", result[0], "mse:", result[1], "time:", t2 - t1, "best mae:", np.min(mae), 'lossval:', result[2] )
             with open(run_log_name, "a") as log_file:
-                log_file.write("mae:{}, mse:{}, time:{}, best mae:{}".format(result[0], 
-                                result[1], t2 - t1, np.min(mae)))
+                log_file.write("mae:{}, mse:{}, time:{}, best mae:{}, lossval: {} \n".format(result[0],result[1], t2 - t1, np.min(mae), result[2]))
             print('=======================================val=======================================')
             # recored the evaluation results
             if writer is not None:
                 with open(run_log_name, "a") as log_file:
-                    log_file.write("metric/mae@{}: {}".format(step, result[0]))
-                    log_file.write("metric/mse@{}: {}".format(step, result[1]))
+                    log_file.write("metric/mae@{} : {} ".format(step, result[0]))
+                    log_file.write("metric/mse@{} : {} ".format(step, result[1]))
+                    log_file.write("lossval@{} : {} \n".format(step, result[2]))
                 writer.add_scalar('metric/mae', result[0], step)
                 writer.add_scalar('metric/mse', result[1], step)
+                writer.add_scalar('lossval', result[2], step)
                 step += 1
 
             # save the best model since begining
