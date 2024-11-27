@@ -72,8 +72,10 @@ def get_args_parser():
     parser.add_argument('--eval_freq', default=1, type=int,
                         help='frequency of evaluation, default setting is evaluating in every 5 epoch')
     parser.add_argument('--gpu_id', default=0, type=int, help='the gpu used for training')
-    parser.add_argument('--patience', default=3, type=int,
+    parser.add_argument('--patience', default=5, type=int,
                         help='Number of epochs with no improvement to stop training')
+    parser.add_argument('--opt', default='ADAM', help='optimizer')
+    parser.add_argument('--momentum', default=0.9, type=float, help='Momentum factor for SGD optimizer')
 
     return parser
 
@@ -115,12 +117,19 @@ def main(args):
         },
     ]
     # Adam is used by default
-    optimizer = torch.optim.Adam(param_dicts, lr=args.lr)
+    if args.opt.upper() == 'ADAM':
+        optimizer = torch.optim.Adam(param_dicts, lr=args.lr)
+    elif args.opt.upper() == 'SGD':
+        optimizer = torch.optim.SGD(param_dicts, lr=args.lr, momentum=args.momentum)
+    else:
+        raise ValueError(f"Unsupported optimizer: {args.opt}. Please use 'ADAM' or 'SGD'.")
+
     lr_scheduler = torch.optim.lr_scheduler.StepLR(optimizer, args.lr_drop)
     # create the dataset
     loading_data = build_dataset(args=args)
     # create the training and valiation set
     train_set, val_set = loading_data(args.data_root)
+    print('lenght of train: ', len(train_set), 'lenght of val: ', len(val_set))
     # create the sampler used during training
     sampler_train = torch.utils.data.RandomSampler(train_set)
     sampler_val = torch.utils.data.SequentialSampler(val_set)
