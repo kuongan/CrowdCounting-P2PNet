@@ -206,7 +206,7 @@ class P2PNet(nn.Module):
 
         self.anchor_points = AnchorPoints(pyramid_levels=[3,], row=row, line=line)
 
-        self.fpn = Decoder(256, 512, 512)
+        self.fpn = Decoder(256, 512, 1024)
 
     def forward(self, samples: NestedTensor):
         # get the backbone features
