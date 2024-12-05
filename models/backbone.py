@@ -70,6 +70,7 @@ class BackboneBase_ResNet(nn.Module):
             self.body2 = features[4]  # Layer1
             self.body3 = features[5]  # Layer2
             self.body4 = features[6]  # Layer3
+            self.body5 = features[7] 
         else:
             # Use the full backbone
             self.body = nn.Sequential(*features)
@@ -77,21 +78,23 @@ class BackboneBase_ResNet(nn.Module):
         self.return_interm_layers = return_interm_layers
         self.num_channels = num_channels
 
-    def forward(self, x):
+    def forward(self, tensor_list):
+        out = []
         if self.return_interm_layers:
-            c1 = self.body1(x)  # Output after Conv1, BN1, ReLU, MaxPool
-            c2 = self.body2(c1)  # Output of Layer1
-            c3 = self.body3(c2)  # Output of Layers2
-            c4 = self.body4(c3)  # Output of Layer3
-            return c1, c2, c3, c4
+            xs = tensor_list
+            for _, layer in enumerate([self.body1, self.body2, self.body3, self.body4, self.body5]):
+                xs = layer(xs)
+                out.append(xs)
         else:
-            return self.body(x)
+            xs = self.body(tensor_list)
+            out.append(xs)
+        return out
 
 class Backbone_ResNet(BackboneBase_ResNet):
     def __init__(self, name: str, return_interm_layers: bool):
         if name == 'resnet50':
             backbone = resnet.resnet50(pretrained=True)
-        num_channels = 1024  
+        num_channels = 2048  
         super().__init__(backbone, num_channels, name, return_interm_layers)
               
 def build_backbone(args):

@@ -7,7 +7,7 @@ import math
 import os
 import sys
 from typing import Iterable
-
+import random
 import torch
 
 import util.misc as utils
@@ -122,51 +122,47 @@ def train_one_epoch(model: torch.nn.Module, criterion: torch.nn.Module,
 
 # the inference routine
 @torch.no_grad()
+@torch.no_grad()
 def evaluate_crowd_no_overlap(model, data_loader, device, criterion=None, vis_dir=None):
     model.eval()
 
-    metric_logger = utils.MetricLogger(delimiter="  ")
-    metric_logger.add_meter('class_error', utils.SmoothedValue(window_size=1, fmt='{value:.2f}'))
-    # run inference on all images to calc MAE
     maes = []
     mses = []
-    total_loss = 0  # Thêm biến để tích lũy loss
+    total_loss = 0  # Tích lũy loss
 
-    for samples, targets in data_loader:
+    for idx, (samples, targets) in enumerate(data_loader):
         samples = samples.to(device)
         targets = [{k: v.to(device) for k, v in t.items()} for t in targets]
 
         outputs = model(samples)
-        outputs_scores = torch.nn.functional.softmax(outputs['pred_logits'], -1)[:, :, 1][0]
-        outputs_points = outputs['pred_points'][0]
+        outputs_scores = torch.nn.functional.softmax(outputs['pred_logits'], -1)[:, :, 1]
+        outputs_points = outputs['pred_points']
 
+        # Vector hóa tính toán
+        mask = outputs_scores > 0.5
+        points = outputs_points[mask].detach().cpu().numpy()
+        predict_cnt = mask.sum().item()
         gt_cnt = targets[0]['point'].shape[0]
-        threshold = 0.5
 
-        points = outputs_points[outputs_scores > threshold].detach().cpu().numpy().tolist()
-        predict_cnt = int((outputs_scores > threshold).sum())
+        # Tích lũy MAE, MSE
+        maes.append(abs(predict_cnt - gt_cnt))
+        mses.append((predict_cnt - gt_cnt) ** 2)
 
-        # if specified, save the visualized images
-        if vis_dir is not None:
+        # Trực quan hóa hạn chế
+        if vis_dir is not None and random.random() < 0.1:
             vis(samples, targets, [points], vis_dir)
 
-        # accumulate MAE, MSE
-        mae = abs(predict_cnt - gt_cnt)
-        mse = (predict_cnt - gt_cnt) * (predict_cnt - gt_cnt)
-        maes.append(float(mae))
-        mses.append(float(mse))
-
-        # Nếu truyền `criterion`, tính loss
-        if criterion is not None:
+        # Tính Loss nếu cần thiết
+        if criterion is not None and idx % 10 == 0:  # Tính loss mỗi 10 batch
             loss_dict = criterion(outputs, targets)
             weight_dict = criterion.weight_dict
-            losses = sum(loss_dict[k] * weight_dict[k] for k in loss_dict.keys() if k in weight_dict)
-            total_loss += losses.item()
+            loss = sum(loss_dict[k] * weight_dict[k] for k in loss_dict.keys() if k in weight_dict)
+            total_loss += loss.item()
 
-    # calc MAE, MSE
+    # Tính toán tổng hợp
     mae = np.mean(maes)
     mse = np.sqrt(np.mean(mses))
-    avg_loss = total_loss / len(data_loader) if criterion is not None else None
+    avg_loss = total_loss / len(data_loader) if criterion else None
 
-    # Trả về MAE, MSE và Loss trung bình
     return mae, mse, avg_loss
+

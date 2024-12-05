@@ -16,8 +16,8 @@ warnings.filterwarnings('ignore')
 
 def get_args_parser():
     parser = argparse.ArgumentParser('Set parameters for testing P2PNet', add_help=False)
-    parser.add_argument('--batch_size', default=1, type=int, help='Batch size for testing')
-    parser.add_argument('--num_workers', default=8, type=int, help='Number of workers for data loader')
+    parser.add_argument('--batch_size', default=4, type=int, help='Batch size for testing')
+    parser.add_argument('--num_workers', default=2, type=int, help='Number of workers for data loader')
     parser.add_argument('--data_root', default='./DATASET/part_A', help='Path to the dataset')
     parser.add_argument('--dataset_file', default='SHHA', help='Dataset file')
     parser.add_argument('--resume', default='./ckpt/best_mae.pth', help='Path to the model checkpoint')

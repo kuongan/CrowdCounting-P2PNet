@@ -152,7 +152,7 @@ class AnchorPoints(nn.Module):
         else:
             return torch.from_numpy(all_anchor_points.astype(np.float32))
 
-class Decoder(nn.Module):
+class Decoder_3(nn.Module):
     def __init__(self, C3_size, C4_size, C5_size, feature_size=256):
         super(Decoder, self).__init__()
 
@@ -189,6 +189,55 @@ class Decoder(nn.Module):
         P3_x = self.P3_2(P3_x)
 
         return [P3_x, P4_x, P5_x]
+class Decoder(nn.Module):
+    def __init__(self, C3_size, C4_size, C5_size, C6_size, feature_size=256):
+        super(Decoder, self).__init__()
+
+        # P6 layers
+        self.P6_1 = nn.Conv2d(C6_size, feature_size, kernel_size=1, stride=1, padding=0)
+        self.P6_upsampled = nn.Upsample(scale_factor=2, mode='nearest')
+        self.P6_2 = nn.Conv2d(feature_size, feature_size, kernel_size=3, stride=1, padding=1)
+
+        # P5 layers
+        self.P5_1 = nn.Conv2d(C5_size, feature_size, kernel_size=1, stride=1, padding=0)
+        self.P5_upsampled = nn.Upsample(scale_factor=2, mode='nearest')
+        self.P5_2 = nn.Conv2d(feature_size, feature_size, kernel_size=3, stride=1, padding=1)
+
+        # P4 layers
+        self.P4_1 = nn.Conv2d(C4_size, feature_size, kernel_size=1, stride=1, padding=0)
+        self.P4_upsampled = nn.Upsample(scale_factor=2, mode='nearest')
+        self.P4_2 = nn.Conv2d(feature_size, feature_size, kernel_size=3, stride=1, padding=1)
+
+        # P3 layers
+        self.P3_1 = nn.Conv2d(C3_size, feature_size, kernel_size=1, stride=1, padding=0)
+        self.P3_upsampled = nn.Upsample(scale_factor=2, mode='nearest')
+        self.P3_2 = nn.Conv2d(feature_size, feature_size, kernel_size=3, stride=1, padding=1)
+
+    def forward(self, inputs):
+        C3, C4, C5, C6 = inputs
+
+        # P6 feature map
+        P6_x = self.P6_1(C6)
+        P6_upsampled_x = self.P6_upsampled(P6_x)
+        P6_x = self.P6_2(P6_x)
+
+        # P5 feature map
+        P5_x = self.P5_1(C5)
+        P5_x = P6_upsampled_x + P5_x
+        P5_upsampled_x = self.P5_upsampled(P5_x)
+        P5_x = self.P5_2(P5_x)
+
+        # P4 feature map
+        P4_x = self.P4_1(C4)
+        P4_x = P5_upsampled_x + P4_x
+        P4_upsampled_x = self.P4_upsampled(P4_x)
+        P4_x = self.P4_2(P4_x)
+
+        # P3 feature map
+        P3_x = self.P3_1(C3)
+        P3_x = P3_x + P4_upsampled_x
+        P3_x = self.P3_2(P3_x)
+        return [P3_x, P4_x, P5_x, P6_x]
 
 # the defenition of the P2PNet model
 class P2PNet(nn.Module):
@@ -204,22 +253,20 @@ class P2PNet(nn.Module):
                                             num_classes=self.num_classes, \
                                             num_anchor_points=num_anchor_points)
 
-        self.anchor_points = AnchorPoints(pyramid_levels=[3,], row=row, line=line)
-
-        self.fpn = Decoder(256, 512, 1024)
+        self.anchor_points = AnchorPoints(pyramid_levels=[3], row=row, line=line)
+        self.fpn = Decoder(256, 512, 1024,2048)
 
     def forward(self, samples: NestedTensor):
         # get the backbone features
         features = self.backbone(samples)
         # forward the feature pyramid
-        features_fpn = self.fpn([features[1], features[2], features[3]])
-
+        features_fpn = self.fpn([features[1], features[2], features[3], features[4]])
         batch_size = features[0].shape[0]
         # run the regression and classification branch
         regression = self.regression(features_fpn[1]) * 100 # 8x
         classification = self.classification(features_fpn[1])
         anchor_points = self.anchor_points(samples).repeat(batch_size, 1, 1)
-        # decode the points as prediction
+        # decode the points as prediction 
         output_coord = regression + anchor_points
         output_class = classification
         out = {'pred_logits': output_class, 'pred_points': output_coord}
